@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::io::read_to_string;
 use std::{
     env,
@@ -136,11 +137,22 @@ fn nvim_cmd_impl(bin: &str, args: &[String]) -> TokioCommand {
 }
 
 fn check_wsl_distro(distro: &str) -> bool {
-    let Ok(child) = StdCommand::new("wsl").stdout(Stdio::piped()).args(["-l", "-q"]).spawn() else {
+    let child = StdCommand::new("wsl")
+        .args(["-l", "-q"])
+        .stdout(Stdio::piped())
+        .output();
+
+    let Ok(child) = child else {
         return false;
     };
 
-    let Some(lines) = child.stdout.and_then(|out| read_to_string(out).ok()) else {
+    let utf16 = child
+        .stdout
+        .chunks(2)
+        .map(|bytes| u16::from_ne_bytes([bytes[0], bytes[1]]))
+        .collect_vec();
+
+    let Ok(lines) = String::from_utf16(&utf16) else {
         return false;
     };
 
@@ -152,10 +164,10 @@ fn nvim_windows_cmd_impl(bin: &str, distro: Option<String>, bin_args: &[String])
     let mut args = vec![];
 
     if let Some(distro) = &distro {
-        if !check_wsl_distro(distro) {
-            warn!("WSL Distro: `{distro}` does not exist, using default instead.")
-        } else {
+        if check_wsl_distro(distro) {
             args.extend_from_slice(&["-d", distro.as_str()])
+        } else {
+            warn!("WSL Distro: `{distro}` does not exist, using default instead.")
         }
     }
 
