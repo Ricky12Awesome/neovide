@@ -48,6 +48,10 @@ pub struct CmdLineSettings {
     #[arg(long)]
     pub wsl: bool,
 
+    /// Sets which distro to use for WSL
+    #[arg(long = "wsl-distro", env = "NEOVIDE_WSL_DISTRO")]
+    pub wsl_distro: Option<String>,
+
     /// Which window decorations to use (do note that the window might not be resizable
     /// if this is "none")
     #[arg(long, env = "NEOVIDE_FRAME", default_value_t)]

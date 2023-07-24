@@ -1,3 +1,4 @@
+use std::io::read_to_string;
 use std::{
     env,
     path::Path,
@@ -134,12 +135,46 @@ fn nvim_cmd_impl(bin: &str, args: &[String]) -> TokioCommand {
     cmd
 }
 
+fn check_wsl_distro(distro: &str) -> bool {
+    let Ok(child) = StdCommand::new("wsl").stdout(Stdio::piped()).args(["-l", "-q"]).spawn() else {
+        return false;
+    };
+
+    let Some(lines) = child.stdout.and_then(|out| read_to_string(out).ok()) else {
+        return false;
+    };
+
+    lines.lines().any(|line| line == distro)
+}
+
+fn nvim_windows_cmd_impl(bin: &str, distro: Option<String>, bin_args: &[String]) -> TokioCommand {
+    let mut cmd = TokioCommand::new("wsl");
+    let mut args = vec![];
+
+    if let Some(distro) = &distro {
+        if !check_wsl_distro(distro) {
+            warn!("WSL Distro: `{distro}` does not exist, using default instead.")
+        } else {
+            args.extend_from_slice(&["-d", distro.as_str()])
+        }
+    }
+
+    args.extend_from_slice(&["$SHELL", "-lc"]);
+
+    let bin_args = format!("{} {}", bin, bin_args.join(" "));
+
+    args.push(bin_args.as_str());
+
+    cmd.args(args);
+    cmd
+}
+
 #[cfg(not(target_os = "macos"))]
 fn nvim_cmd_impl(bin: &str, args: &[String]) -> TokioCommand {
-    if cfg!(target_os = "windows") && SETTINGS.get::<CmdLineSettings>().wsl {
-        let mut cmd = TokioCommand::new("wsl");
-        cmd.args(["$SHELL", "-lc", &format!("{} {}", bin, args.join(" "))]);
-        cmd
+    let settings = SETTINGS.get::<CmdLineSettings>();
+
+    if cfg!(target_os = "windows") && settings.wsl {
+        nvim_windows_cmd_impl(bin, settings.wsl_distro, args)
     } else {
         let mut cmd = TokioCommand::new(bin);
         cmd.args(args);
